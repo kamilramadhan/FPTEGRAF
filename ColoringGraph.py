@@ -1,116 +1,118 @@
 import matplotlib.pyplot as plt
 import networkx as nx
 from collections import deque
-from random import randrange, randint
-import string
+from random import choice
 
+regions = {
+    "Surabaya Pusat": (0.5, 0.5),
+    "Surabaya Timur": (0.8, 0.5),
+    "Surabaya Barat": (0.2, 0.5),
+    "Surabaya Utara": (0.5, 0.8),
+    "Surabaya Selatan": (0.5, 0.2),
+    "Tunjungan Plaza": (0.6, 0.6),
+    "Darmo": (0.4, 0.4),
+    "Kebun Binatang Surabaya": (0.4, 0.6),
+    "Pakuwon City": (0.7, 0.7),
+    "Marina": (0.3, 0.3),
+}
 
-def generate_connected_graph(num_nodes, k_neighbors, prob):
-    """Generate a connected Watts-Strogatz graph for more connections."""
-    graph = nx.connected_watts_strogatz_graph(num_nodes, k_neighbors, prob)
-    return graph
+edges = [
+    ("Surabaya Pusat", "Tunjungan Plaza"),
+    ("Surabaya Pusat", "Darmo"),
+    ("Surabaya Pusat", "Kebun Binatang Surabaya"),
+    ("Surabaya Timur", "Pakuwon City"),
+    ("Surabaya Timur", "Surabaya Pusat"),
+    ("Surabaya Barat", "Darmo"),
+    ("Surabaya Barat", "Surabaya Pusat"),
+    ("Surabaya Utara", "Tunjungan Plaza"),
+    ("Surabaya Utara", "Surabaya Pusat"),
+    ("Surabaya Selatan", "Darmo"),
+    ("Surabaya Selatan", "Surabaya Pusat"),
+    ("Tunjungan Plaza", "Surabaya Barat"),
+    ("Pakuwon City", "Surabaya Utara"),
+    ("Marina", "Surabaya Selatan"),
+    ("Marina", "Darmo"),
+]
 
-
-def tabucol(graph, number_of_colors, tabu_size=7, reps=100, max_iterations=10000, debug=False):
+def tabucol(graph, number_of_colors, tabu_size=10, reps=500, max_iterations=50000, debug=False):
     colors = list(range(number_of_colors))
     iterations = 0
     tabu = deque()
-    solution = {i: colors[randrange(0, len(colors))] for i in range(len(graph))}
-
-    aspiration_level = {}
+    solution = {node: colors[0] for node in graph.nodes}
 
     while iterations < max_iterations:
         move_candidates = set()
         conflict_count = 0
-        for i in range(len(graph)):
-            for j in range(i + 1, len(graph)):
-                if graph[i][j] > 0 and solution[i] == solution[j]:
-                    move_candidates.add(i)
-                    move_candidates.add(j)
-                    conflict_count += 1
+        for node1, node2 in graph.edges:
+            if solution[node1] == solution[node2]:
+                move_candidates.add(node1)
+                move_candidates.add(node2)
+                conflict_count += 1
         move_candidates = list(move_candidates)
 
         if conflict_count == 0:
-            break
+            return solution
 
-        new_solution = None
         for _ in range(reps):
-            node = move_candidates[randrange(0, len(move_candidates))]
-            new_color = colors[randrange(0, len(colors) - 1)]
-            if solution[node] == new_color:
-                new_color = colors[-1]
+            if not move_candidates:
+                break
+            node = choice(move_candidates)
+            new_color = (solution[node] + 1) % number_of_colors
 
             new_solution = solution.copy()
             new_solution[node] = new_color
-            new_conflicts = 0
-            for i in range(len(graph)):
-                for j in range(i + 1, len(graph)):
-                    if graph[i][j] > 0 and new_solution[i] == new_solution[j]:
-                        new_conflicts += 1
+            new_conflicts = sum(
+                1 for n1, n2 in graph.edges if new_solution[n1] == new_solution[n2]
+            )
             if new_conflicts < conflict_count:
-                if new_conflicts <= aspiration_level.setdefault(conflict_count, conflict_count - 1):
-                    aspiration_level[conflict_count] = new_conflicts - 1
-
-                    if (node, new_color) in tabu:
-                        tabu.remove((node, new_color))
-                        if debug:
-                            print("Tabu permitted;", conflict_count, "->", new_conflicts)
-                        break
-                else:
-                    if (node, new_color) in tabu:
-                        continue
-                if debug:
-                    print(conflict_count, "->", new_conflicts)
+                solution = new_solution
                 break
 
-        tabu.append((node, solution[node]))
-        if len(tabu) > tabu_size:
+        iterations += 1
+        if len(tabu) >= tabu_size:
             tabu.popleft()
 
-        solution = new_solution
-        iterations += 1
-        if debug and iterations % 500 == 0:
-            print("Iteration:", iterations)
-
-    if conflict_count != 0:
-        print("No coloring found with {} colors.".format(number_of_colors))
-        return None
-    else:
-        print("Found coloring:\n", solution)
-        return solution
+    if debug:
+        print(f"Failed after {iterations} iterations with {conflict_count} conflicts.")
+    return None
 
 
-def visualize_graph_side_by_side(graph, coloring=None):
-    """Visualize uncolored and colored graphs side by side."""
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+def visualize_graph(graph, region_positions, coloring=None):
+    """Visualize the graph with fixed positions and coloring."""
+    plt.figure(figsize=(8, 6))
     
-    pos = nx.spring_layout(graph)
-    labels = {i: chr(65 + i) for i in graph.nodes}
+    pos = region_positions
 
-    # Uncolored graph
-    nx.draw(graph, pos, with_labels=True, labels=labels, node_color="lightgray", ax=axes[0])
-    axes[0].set_title("Graf Sebelum Pewarnaan")
-
-    # Colored graph
+    # Tentukan warna default jika coloring gagal
     if coloring:
-        colors = [coloring[node] for node in graph.nodes]
-        nx.draw(graph, pos, with_labels=True, labels=labels, node_color=colors, cmap=plt.cm.rainbow, ax=axes[1])
-        axes[1].set_title("Graf Setelah Pewarnaan (Tanpa Node Bertetangga Memiliki Warna Sama)")
+        node_colors = [coloring[node] for node in graph.nodes]
+    else:
+        node_colors = "lightgray"
 
-    plt.tight_layout()
+    nx.draw(
+        graph, pos, with_labels=True,
+        labels={node: node for node in graph.nodes},
+        node_color=node_colors,
+        cmap=plt.cm.rainbow, node_size=800, font_size=10, edge_color="gray"
+    )
+    plt.title("Peta Wilayah Surabaya dengan Pewarnaan", fontsize=16)
     plt.show()
 
 
 if __name__ == "__main__":
-    num_nodes = randint(10, 15)  # Random number of nodes between 10 and 15
-    k_neighbors = 4  # Each node is connected to k neighbors
-    edge_prob = 0.5  # Rewiring probability
-    graph = generate_connected_graph(num_nodes, k_neighbors, edge_prob)
+    graph = nx.Graph()
+    graph.add_edges_from(edges)
 
-    # Visualize the uncolored graph and solve
-    adjacency_matrix = nx.to_numpy_array(graph).astype(int).tolist()
-    num_colors = randint(3, 6)  # Random number of colors between 3 and 6
-    coloring = tabucol(adjacency_matrix, num_colors, debug=False)
+    # Coba dengan jumlah warna yang semakin besar jika gagal
+    for num_colors in range(4, 10):
+        print(f"Trying with {num_colors} colors...")
+        coloring = tabucol(graph, num_colors, debug=True)
+        if coloring:
+            print(f"Success with {num_colors} colors!")
+            break
+    else:
+        print("Failed to color the graph with up to 9 colors.")
+        coloring = None
 
-    # Show side-by-side visualization
-    visualize_graph_side_by_side(graph, coloring=coloring)
+    # Visualize the graph
+    visualize_graph(graph, regions, coloring=coloring)
